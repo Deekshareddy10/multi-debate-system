@@ -27,12 +27,30 @@ def start_debate(request : DebateRequest):
 # we use debate id because there might be 2 open status debates going on, so when the user says to start the debate, the system should be able to know which one 
 
 @app.get("/debate/{debate_id}")
-def get_debate(debate_id:str):
+def get_debate(debate_id: str):
     if debate_id not in debates:
         return {"error":"not found"}
     
     return debates[debate_id]
 
+@app.post("/next-round")
+def next_round(debate_id: str):
+    if debate_id not in debates:
+        raise HTTPException(status_code=404, detail="Debate not found")
+
+    state = debates[debate_id]
+
+    round_data = {
+        "round": "opening",
+        "A": "I support this topic because it has strong benefits.",
+        "B": "I oppose this topic because it has serious drawbacks."
+    }
+
+    state.rounds.append(round_data)
+
+    debates[debate_id] = state
+
+    return state
 
 @app.get('/')
 def default_message():
