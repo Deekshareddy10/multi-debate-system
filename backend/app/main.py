@@ -40,17 +40,33 @@ def next_round(debate_id: str):
 
     state = debates[debate_id]
 
+    A_response = generate_agent_response("pro", state.topic, state.context)
+    B_response = generate_agent_response("con", state.topic, state.context)
     round_data = {
         "round": "opening",
-        "A": "I support this topic because it has strong benefits.",
-        "B": "I oppose this topic because it has serious drawbacks."
+        "A": A_response,
+        "B": B_response
     }
+
 
     state.rounds.append(round_data)
 
     debates[debate_id] = state
 
     return state
+
+def generate_agent_response(role: str, topic: str, context: str | None):
+
+    base = f"The topic is: {topic}."
+
+    if context:
+        base += f" Additional context: {context}."
+
+    if role == "pro":
+        return base + " I support this topic because it provides clear advantages."
+    else:
+        return base + " I oppose this topic because it raises serious concerns."
+    
 
 @app.get('/')
 def default_message():
