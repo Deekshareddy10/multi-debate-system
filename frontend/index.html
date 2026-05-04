@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Debate System</title>
+</head>
+<body>
+
+<h1>AI Debate System </h1>
+
+<input id="topic" placeholder="Enter topic"><br><br>
+<input id="context" placeholder="Enter context"><br><br>
+
+<button onclick="startDebate()">Start Debate</button>
+<button onclick="nextRound()">Next Round</button>
+<button onclick="judgeDebate()">Judge</button>
+
+<h2>Output:</h2>
+<div id="output"></div>
+
+<script>
+let debateId = null;
+
+async function startDebate() {
+    const topic = document.getElementById("topic").value;
+    const context = document.getElementById("context").value;
+
+    const res = await fetch("http://127.0.0.1:8000/start-debate", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ topic, context })
+    });
+
+    const data = await res.json();
+    debateId = data.debate_id;
+
+    document.getElementById("output").innerHTML = "Debate started: " + debateId;
+}
+
+async function nextRound() {
+    const res = await fetch(`http://127.0.0.1:8000/next-round?debate_id=${debateId}`, {
+        method: "POST"
+    });
+
+    const data = await res.json();
+    renderDebate(data.rounds);
+}
+
+async function judgeDebate() {
+    const res = await fetch(`http://127.0.0.1:8000/judge/${debateId}`);
+    const data = await res.json();
+
+    document.getElementById("output").innerHTML += `
+        <h2>Winner: ${data.winner}</h2>
+        <p>${data.reason}</p>
+    `;
+}
+
+function renderDebate(rounds) {
+    let html = "";
+
+    rounds.forEach((r, index) => {
+        html += `
+            <h3>Round ${index + 1} (${r.round})</h3>
+            <p><b>A:</b> ${r.A}</p>
+            <p><b>B:</b> ${r.B}</p>
+            <hr>
+        `;
+    });
+
+    document.getElementById("output").innerHTML = html;
+}
+</script>
+
+</body>
+</html>
