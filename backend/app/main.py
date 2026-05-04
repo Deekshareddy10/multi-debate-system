@@ -1,14 +1,19 @@
-from fastapi import FastAPI #import
+from fastapi import FastAPI, HTTPException
 import uuid
 from app.models.state import DebateState
 from app.models.debate import DebateRequest
-from openai import OpenAI
-from fastapi import HTTPException
 import requests
-
-client = OpenAI()
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI() # starting the fastapi server 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 debates = {} #dict to store - local memory
 
@@ -113,15 +118,27 @@ def generate_agent_response(role: str, topic: str, context: str | None, history,
 
     if round_type == "opening":
         prompt += "Give your main argument clearly."
-
     elif round_type == "rebuttal":
         prompt += "Directly challenge your opponent’s argument."
-
     elif round_type == "counter":
         prompt += "Strengthen your position and counter weaknesses."
-
     elif round_type == "closing":
         prompt += "Summarize your position and conclude strongly."
+
+    response = requests.post(
+        "http://localhost:11434/api/generate",
+        json={
+            "model": "llama3:latest",
+            "prompt": prompt,
+            "stream": False
+        }
+    )
+
+    if response.status_code != 200:
+        return f"Error from Ollama: {response.text}"
+
+    data = response.json()
+    return data.get("response", "No response from model")
 
 def judge_debate(state):
     prompt = f"""
@@ -153,13 +170,18 @@ Reason: ...
     response = requests.post(                               #using local ollama model 
         "http://localhost:11434/api/generate",
         json={
-            "model": "llama3",
+            "model": "llama3:latest",
             "prompt": prompt,
             "stream": False
         }
     )
 
-    return response.json()["response"]
+    if response.status_code != 200:
+        print("ERROR:", response.text)
+        return "Error from Ollama"
+
+    data = response.json()
+    return data.get("response", "No response key found")
 
 @app.get("/judge/{debate_id}")
 def judge(debate_id: str):
@@ -174,6 +196,8 @@ def judge(debate_id: str):
 
     return {
         "debate_id": debate_id,
+        "winner": winner,
+        "reason": reason,
         "result": result
     }
 
