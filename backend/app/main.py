@@ -2,6 +2,11 @@ from fastapi import FastAPI #import
 import uuid
 from app.models.state import DebateState
 from app.models.debate import DebateRequest
+from openai import OpenAI
+from fastapi import HTTPException
+import requests
+
+client = OpenAI()
 
 app = FastAPI() # starting the fastapi server 
 
@@ -40,17 +45,70 @@ def next_round(debate_id: str):
 
     state = debates[debate_id]
 
+    A_response = generate_agent_response(
+    role="pro",
+    topic=state.topic,
+    context=state.context,
+    history=state.rounds
+)
+
+    B_response = generate_agent_response(
+    role="con",
+    topic=state.topic,
+    context=state.context,
+    history=state.rounds + [{"A": A_response}] # B now sees what A said 
+)
+
     round_data = {
         "round": "opening",
-        "A": "I support this topic because it has strong benefits.",
-        "B": "I oppose this topic because it has serious drawbacks."
+        "A": A_response,
+        "B": B_response
     }
+
 
     state.rounds.append(round_data)
 
     debates[debate_id] = state
 
     return state
+
+
+def generate_agent_response(role: str, topic: str, context: str | None, history):
+
+    if role == "pro":
+        stance = "You strongly support this topic."
+    else:
+        stance = "You strongly oppose the topic."
+
+    prompt = f"{stance} Topic: {topic}. "
+
+    if context:
+        prompt += f"Context: {context}. "
+
+    if history and len(history) > 0:
+        last = history[-1]
+        opponent = last.get("B") if role == "pro" else last.get("A")
+
+        if opponent:
+            prompt += f"Your opponent said: '{opponent}'. Respond to it. "
+
+    if role == "pro":
+        prompt += "Argue why the topic is beneficial."
+    else:
+        prompt += "Argue why the topic is problematic."
+
+    response = requests.post(                               #using local ollama model 
+        "http://localhost:11434/api/generate",
+        json={
+            "model": "llama3",
+            "prompt": prompt,
+            "stream": False
+        }
+    )
+
+    return response.json()["response"]
+
+
 
 @app.get('/')
 def default_message():
