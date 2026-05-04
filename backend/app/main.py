@@ -44,23 +44,37 @@ def next_round(debate_id: str):
         raise HTTPException(status_code=404, detail="Debate not found")
 
     state = debates[debate_id]
+    round_number = len(state.rounds)+1
+    if round_number == 1:
+        round_type = "opening"
+    elif round_number == 2:
+        round_type = "rebuttal"
+    elif round_number == 3:
+        round_type = "counter"
+    else:
+        round_type = "closing"
+
+    if len(state.rounds) >= 4:
+        return {"message": "Debate already completed"}
 
     A_response = generate_agent_response(
     role="pro",
     topic=state.topic,
     context=state.context,
-    history=state.rounds
+    history=state.rounds,
+    round_type = round_type
 )
 
     B_response = generate_agent_response(
     role="con",
     topic=state.topic,
     context=state.context,
-    history=state.rounds + [{"A": A_response}] # B now sees what A said 
+    history=state.rounds + [{"A": A_response}], # B now sees what A said 
+    round_type = round_type
 )
 
     round_data = {
-        "round": "opening",
+        "round": round_type,
         "A": A_response,
         "B": B_response
     }
@@ -73,7 +87,7 @@ def next_round(debate_id: str):
     return state
 
 
-def generate_agent_response(role: str, topic: str, context: str | None, history):
+def generate_agent_response(role: str, topic: str, context: str | None, history, round_type):
 
     if role == "pro":
         stance = "You strongly support this topic."
@@ -97,6 +111,45 @@ def generate_agent_response(role: str, topic: str, context: str | None, history)
     else:
         prompt += "Argue why the topic is problematic."
 
+    if round_type == "opening":
+        prompt += "Give your main argument clearly."
+
+    elif round_type == "rebuttal":
+        prompt += "Directly challenge your opponent’s argument."
+
+    elif round_type == "counter":
+        prompt += "Strengthen your position and counter weaknesses."
+
+    elif round_type == "closing":
+        prompt += "Summarize your position and conclude strongly."
+
+def judge_debate(state):
+    prompt = f"""
+You are an unbiased debate judge.
+
+Debate Topic: {state.topic}
+
+Debate Rounds:
+"""
+
+    for r in state.rounds:
+        prompt += f"\nRound: {r['round']}\n"
+        prompt += f"A (Pro): {r['A']}\n"
+        prompt += f"B (Con): {r['B']}\n"
+
+    prompt += """
+Analyze the arguments carefully.
+
+Decide:
+1. Who presented stronger arguments (A or B)
+2. Why
+3. Give a short explanation
+
+Return in format:
+Winner: A or B
+Reason: ...
+"""    
+
     response = requests.post(                               #using local ollama model 
         "http://localhost:11434/api/generate",
         json={
@@ -108,7 +161,34 @@ def generate_agent_response(role: str, topic: str, context: str | None, history)
 
     return response.json()["response"]
 
+@app.get("/judge/{debate_id}")
+def judge(debate_id: str):
+    if debate_id not in debates:
+        raise HTTPException(status_code=404, detail="Debate not found")
 
+    state = debates[debate_id]
+    result = judge_debate(state)
+    
+    
+    winner, reason = parse_judgement(result)
+
+    return {
+        "debate_id": debate_id,
+        "result": result
+    }
+
+def parse_judgement(result): #helper function to understand the responses better 
+    lines = result.split("\n")
+    winner = None
+    reason = ""
+
+    for line in lines:
+        if "Winner" in line:
+            winner = line.split(":")[-1].strip()
+        if "Reason" in line:
+            reason = line.split(":")[-1].strip()
+
+    return winner, reason
 
 @app.get('/')
 def default_message():
